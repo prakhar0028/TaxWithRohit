@@ -1,0 +1,395 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  TAX_EXPERT
+  SUPPORT_AGENT
+}
+
+enum TaxReturnStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DOCUMENTS_PENDING
+  UNDER_REVIEW
+  READY_TO_SUBMIT
+  SUBMITTED
+}
+
+enum NoticeStatus {
+  PENDING
+  UNDER_REVIEW
+  RESPONSE_PREPARED
+  RESPONDED
+  RESOLVED
+}
+
+enum DocumentType {
+  PAN_CARD
+  AADHAAR_CARD
+  FORM_16
+  SALARY_SLIP
+  BANK_STATEMENT
+  INVESTMENT_PROOF
+  CAPITAL_GAINS_STATEMENT
+  RENT_RECEIPT
+  HOME_LOAN_CERTIFICATE
+  PREVIOUS_ITR
+  TAX_NOTICE
+  OTHER
+}
+
+enum DocumentStatus {
+  REQUIRED
+  UPLOADED
+  VERIFIED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum ITRStatus {
+  DRAFT
+  FILED
+  VERIFIED
+  PROCESSED
+  REVISED
+}
+
+model User {
+  id                String             @id @default(uuid())
+  name              String
+  email             String             @unique
+  phone             String             @unique
+  role              UserRole           @default(USER)
+  avatarUrl         String?
+  isVerified        Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  profile           Profile?
+  sessions          Session[]
+  phoneVerifications PhoneVerification[]
+  taxReturns        TaxReturn[]
+  taxProfiles       TaxProfile[]
+  documents         Document[]
+  taxNotices        TaxNotice[]
+  subscriptions     Subscription[]
+  payments          Payment[]
+  notifications     Notification[]
+  supportTickets    SupportTicket[]
+  investments       Investment[]
+  auditLogs         AuditLog[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([role])
+}
+
+model Profile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName           String
+  dob                String?
+  gender             String?
+  pan                String?
+  aadhaar            String?
+  address            String?
+  city               String?
+  state              String?
+  pincode            String?
+  bankName           String?
+  accountNumber      String?
+  ifscCode           String?
+  accountType        String   @default("SAVINGS")
+  profileCompletion  Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model PhoneVerification {
+  id          String   @id @default(uuid())
+  phone       String
+  hashedOTP   String
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  verified    Boolean  @default(false)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([phone])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+model TaxProfile {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assessmentYear    String
+  financialYear     String
+  residentialStatus String   @default("RESIDENT")
+  employmentType    String   @default("SALARIED")
+  selectedRegime    String   @default("NEW")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model TaxReturn {
+  id                 String          @id @default(uuid())
+  userId             String
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assessmentYear     String
+  financialYear      String
+  itrType            String          @default("ITR-1")
+  status             TaxReturnStatus @default(NOT_STARTED)
+  progressPercent    Int             @default(0)
+  selectedRegime     String          @default("NEW")
+  grossTotalIncome   Float           @default(0)
+  totalDeductions    Float           @default(0)
+  taxableIncome      Float           @default(0)
+  totalTaxLiability  Float           @default(0)
+  tdsPaid            Float           @default(0)
+  refundOrPayable    String          @default("PAYABLE")
+  balanceAmount      Float           @default(0)
+  assignedExpertName String?
+  assignedExpertId   String?
+  expertApproved     Boolean         @default(false)
+  ackNumber          String?
+  submittedAt        DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  incomes            Income[]
+  deductions         Deduction[]
+  reviews            ITRReview[]
+
+  @@index([userId])
+  @@index([assessmentYear])
+  @@index([status])
+}
+
+model Income {
+  id          String    @id @default(uuid())
+  taxReturnId String
+  taxReturn   TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+  category    String    // SALARY, HOUSE_PROPERTY, CAPITAL_GAINS, BUSINESS, OTHER
+  sourceName  String
+  grossAmount Float
+  exemptions  Float     @default(0)
+  netAmount   Float
+  tdsDeducted Float     @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([taxReturnId])
+}
+
+model Deduction {
+  id          String    @id @default(uuid())
+  taxReturnId String
+  taxReturn   TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+  section     String    // 80C, 80D, 80CCD1B, 24B, 80G, 80TTA
+  description String
+  claimedAmount Float
+  eligibleAmount Float
+  createdAt   DateTime  @default(now())
+
+  @@index([taxReturnId])
+}
+
+model ITRReview {
+  id          String    @id @default(uuid())
+  taxReturnId String
+  taxReturn   TaxReturn @relation(fields: [taxReturnId], references: [id], onDelete: Cascade)
+  reviewerId  String
+  comments    String
+  status      String
+  createdAt   DateTime  @default(now())
+}
+
+model Document {
+  id             String         @id @default(uuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  type           DocumentType
+  fileUrl        String
+  fileSize       String
+  status         DocumentStatus @default(UPLOADED)
+  assessmentYear String
+  rejectionReason String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TaxNotice {
+  id                 String       @id @default(uuid())
+  userId             String
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  noticeType         String
+  assessmentYear     String
+  dinNumber          String
+  noticeDate         DateTime
+  demandAmount       Float        @default(0)
+  status             NoticeStatus @default(PENDING)
+  documentUrl        String
+  assignedExpertName String?
+  expertAdvice       String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Investment {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category           String
+  name               String
+  investedAmount     Float
+  currentValue       Float
+  taxSection         String
+  taxSavingAchieved  Float
+  growthPercent      Float
+  frequency          String
+  createdAt          DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Subscription {
+  id           String             @id @default(uuid())
+  userId       String
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId       String
+  planName     String
+  amount       Float
+  status       SubscriptionStatus @default(ACTIVE)
+  billingCycle String             @default("YEARLY")
+  startDate    DateTime           @default(now())
+  expiresAt    DateTime
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([userId])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId       String        @unique
+  paymentId     String?       @unique
+  amount        Float
+  currency      String        @default("INR")
+  status        PaymentStatus @default(PENDING)
+  planId        String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String
+  read      Boolean  @default(false)
+  actionUrl String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model SupportTicket {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   String
+  category  String
+  priority  String   @default("MEDIUM")
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Service {
+  id            String   @id @default(uuid())
+  slug          String   @unique
+  title         String
+  category      String
+  shortDesc     String
+  fullDesc      String
+  icon          String
+  price         Float
+  originalPrice Float
+  period        String
+  createdAt     DateTime @default(now())
+}
+
+model Blog {
+  id            String   @id @default(uuid())
+  slug          String   @unique
+  title         String
+  excerpt       String
+  content       String
+  category      String
+  authorName    String
+  authorRole    String
+  publishedDate DateTime @default(now())
+  featuredImage String
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  ipAddress String?
+  userAgent String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
